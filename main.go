@@ -15,7 +15,7 @@ import (
 var addr string
 
 type Chi struct {
-	Type    string `json:"type`
+	Type    string `json:"type"`
 	Version string `json:"version"`
 }
 
@@ -70,12 +70,55 @@ func postNewChi(w http.ResponseWriter, r *http.Request) {
 	_, err = db.Exec(sqlStatement, c.Type, c.Version)
 
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
+		w.WriteHeader(405)
+		w.Write([]byte("method is not valid"))
 		panic(err)
 	}
 
 	w.WriteHeader(http.StatusOK)
 	defer db.Close()
+
+}
+
+func getChiByVersion(w http.ResponseWriter, r *http.Request) {
+
+	db := OpenConnection()
+
+	versionParam := chi.URLParam(r, "version")
+
+	sqlStatement := `SELECT * FROM chi WHERE version = $1`
+
+	rows, err := db.Query(sqlStatement, versionParam)
+
+	if err != nil {
+
+		w.WriteHeader(442)
+		w.Write([]byte(fmt.Sprintf("error fetching chi %s: %v", versionParam, err)))
+		return
+
+	}
+
+	var chis []Chi
+
+	for rows.Next() {
+
+		var chi Chi
+		rows.Scan(&chi.Type, &chi.Version)
+		chis = append(chis, chi)
+
+	}
+
+	chiBytes, _ := json.MarshalIndent(chis, "", "\t")
+
+	w.Header().Set("content-type", "application/json")
+	w.Write(chiBytes)
+
+	defer rows.Close()
+	defer db.Close()
+
+}
+
+func getAllChi(w http.ResponseWriter, r *http.Request) {
 
 }
 
@@ -87,6 +130,18 @@ func main() {
 
 		r.Use(middleware.Logger)
 		r.Post("/create-chi", postNewChi)
+		r.Route("/get-chi", func(r chi.Router) {
+
+			r.Get("/", getAllChi)
+
+			r.Route("/{version}", func(r chi.Router) {
+
+				r.Get("/", getChiByVersion)
+
+			})
+
+		})
+		r.Get("/get-chi/{version}", getChiByVersion) // broken
 
 	})
 
